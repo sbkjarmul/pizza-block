@@ -1,0 +1,19 @@
+{
+  "name": "hardhat",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "hardhat test"
+  },
+  "keywords": [
+    "hardhat",
+    "ethereum",
+    "solidity",
+    "smart contracts",
+    "blockchain",
+    "pizzablock"
+  ],
+  "author": "Sebastian Jarmul",
+  "license": "ISC"
+}
