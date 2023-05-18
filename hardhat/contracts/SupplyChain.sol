@@ -9,7 +9,7 @@ pragma solidity ^0.8.9;
 contract SupplyChain {
     enum Role {
         COOK,
-        DELIVERY_GUY,
+        DELIVERY_MAN,
         CUSTOMER
     }
 
@@ -52,7 +52,7 @@ contract SupplyChain {
 
     constructor() {
         employees[cook] = Employee(cook, Role.COOK);
-        employees[deliveryGuy] = Employee(deliveryGuy, Role.DELIVERY_GUY);
+        employees[deliveryGuy] = Employee(deliveryGuy, Role.DELIVERY_MAN);
         companyWallet = payable(msg.sender);
         owner = msg.sender;
     }
@@ -63,7 +63,7 @@ contract SupplyChain {
     modifier onlyEmployee() {
         require(
             employees[msg.sender].role == Role.COOK ||
-                employees[msg.sender].role == Role.DELIVERY_GUY,
+                employees[msg.sender].role == Role.DELIVERY_MAN,
             "Only employees can call this function"
         );
         _;
@@ -84,16 +84,39 @@ contract SupplyChain {
     function updateCompanyWalletAddress(
         address payable _companyWallet
     ) public onlyOwner {
+        require(
+            _companyWallet != address(0),
+            "Company wallet address cannot be zero address"
+        );
         companyWallet = _companyWallet;
     }
 
     /**
      * @dev Add an employee
      * @param _id employee address
-     * @param _role employee role
+     * @param m_role employee role
      */
-    function addEntity(address _id, Role _role) public {
+    function addEmployee(address _id, string memory m_role) public onlyOwner {
+        require(_id != address(0), "Employee address cannot be zero address");
+        require(
+            employees[_id].id == address(0),
+            "Employee already exists with this address"
+        );
+        Role _role = convertToRoleEnum(m_role);
         employees[_id] = Employee(_id, _role);
+    }
+
+    /**
+     * @dev Remove an employee
+     * @param _id employee address
+     */
+    function removeEmployee(address _id) public onlyOwner {
+        require(_id != address(0), "Employee address cannot be zero address");
+        require(
+            employees[_id].id != address(0),
+            "Employee does not exist with this address"
+        );
+        delete employees[_id];
     }
 
     /**
@@ -102,6 +125,7 @@ contract SupplyChain {
      * @param _status order status
      */
     function updateOrderStatus(uint256 _id, Status _status) private {
+        require(orders[_id].id != 0, "Order does not exist with this id");
         orders[_id].status = _status;
     }
 
@@ -226,5 +250,63 @@ contract SupplyChain {
      */
     function getOrderCook(uint256 _id) public view returns (address) {
         return orders[_id].cook;
+    }
+
+    /**
+     * @dev Get contract owner address
+     */
+    function getOwner() public view returns (address) {
+        return owner;
+    }
+
+    /**
+     * @dev Get company wallet address
+     */
+    function getCompanyWalletAddress() public view onlyOwner returns (address) {
+        return companyWallet;
+    }
+
+    function convertToRoleEnum(
+        string memory m_role
+    ) private pure returns (Role) {
+        bytes32 encodedRole = keccak256(abi.encodePacked(m_role));
+        bytes32 encodedRole0 = keccak256(abi.encodePacked("COOK"));
+        bytes32 encodedRole1 = keccak256(abi.encodePacked("DELIVERY_MAN"));
+        bytes32 encodedRole2 = keccak256(abi.encodePacked("CUSTOMER"));
+
+        if (encodedRole == encodedRole0) {
+            return Role.COOK;
+        } else if (encodedRole == encodedRole1) {
+            return Role.DELIVERY_MAN;
+        } else if (encodedRole == encodedRole2) {
+            return Role.CUSTOMER;
+        }
+
+        revert("Employee role is not valid");
+    }
+
+    function convertToStatusEnum(
+        string memory m_status
+    ) private pure returns (Status) {
+        bytes32 endcodedStatus = keccak256(abi.encodePacked(m_status));
+        bytes32 endcodedStatus0 = keccak256(abi.encodePacked("ORDERED"));
+        bytes32 endcodedStatus1 = keccak256(abi.encodePacked("PREPARING"));
+        bytes32 endcodedStatus2 = keccak256(abi.encodePacked("READY"));
+        bytes32 endcodedStatus3 = keccak256(abi.encodePacked("DELIVERING"));
+        bytes32 endcodedStatus4 = keccak256(abi.encodePacked("COMPLETED"));
+
+        if (endcodedStatus == endcodedStatus0) {
+            return Status.ORDERED;
+        } else if (endcodedStatus == endcodedStatus1) {
+            return Status.PREPARING;
+        } else if (endcodedStatus == endcodedStatus2) {
+            return Status.READY;
+        } else if (endcodedStatus == endcodedStatus3) {
+            return Status.DELIVERING;
+        } else if (endcodedStatus == endcodedStatus4) {
+            return Status.COMPLETED;
+        }
+
+        revert("Order status is not valid");
     }
 }
