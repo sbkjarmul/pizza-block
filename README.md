@@ -35,3 +35,4 @@ Design and implement an autonomous system for ordering pizzas.
     1. Data redundancy - data can't be lost
     2. Payment and verification - fast automatic payment system and easily verified with on-chain identities
     3. Automatic system - smart contract's logic,
+    4. Transparency - a cook and delivery person is assigned to each order
