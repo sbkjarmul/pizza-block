@@ -8,13 +8,14 @@ pragma solidity ^0.8.9;
  */
 contract SupplyChain {
     enum Role {
+        CUSTOMER,
         COOK,
-        DELIVERY_MAN,
-        CUSTOMER
+        DELIVERY_MAN
     }
 
     enum Status {
-        ORDERED,
+        NOT_EXISTS,
+        PLACED,
         PREPARING,
         READY,
         DELIVERING,
@@ -25,7 +26,7 @@ contract SupplyChain {
         uint256 id;
         address customer;
         address cook;
-        address deliveryGuy;
+        address deliveryMan;
         uint256 price;
         Status status;
     }
@@ -41,18 +42,18 @@ contract SupplyChain {
     event OrderPlaced(uint256 id, address customer, uint256 price);
     event OrderPreparing(uint256 id, address cook);
     event OrderReady(uint256 id, address cook);
-    event OrderInDelivery(uint256 id, address deliveryGuy);
-    event OrderCompleted(uint256 id, address deliveryGuy, address customer);
+    event OrderInDelivery(uint256 id, address deliveryMan);
+    event OrderCompleted(uint256 id, address deliveryMan, address customer);
 
     uint private ordersCount = 0;
     address private owner;
-    address private cook = 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4;
-    address private deliveryGuy = 0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2;
+    address private cook = 0xCA35b7d915458EF540aDe6068dFe2F44E8fa733c;
+    address private deliveryMan = 0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2;
     address payable private companyWallet;
 
     constructor() {
         employees[cook] = Employee(cook, Role.COOK);
-        employees[deliveryGuy] = Employee(deliveryGuy, Role.DELIVERY_MAN);
+        employees[deliveryMan] = Employee(deliveryMan, Role.DELIVERY_MAN);
         companyWallet = payable(msg.sender);
         owner = msg.sender;
     }
@@ -61,6 +62,10 @@ contract SupplyChain {
      * @dev Modifier to check if the caller is an employee
      */
     modifier onlyEmployee() {
+        // require(
+        //     msg.sender == cook || msg.sender == deliveryMan,
+        //     "Only employees can call this function"
+        // );
         require(
             employees[msg.sender].role == Role.COOK ||
                 employees[msg.sender].role == Role.DELIVERY_MAN,
@@ -120,12 +125,89 @@ contract SupplyChain {
     }
 
     /**
+     * @dev Place an order
+     */
+    function placeOrder() public payable {
+        require(msg.value > 0, "Price must be greater than 0");
+        ordersCount++;
+        uint orderId = ordersCount;
+        require(orders[orderId].id == 0, "Order already exists");
+        orders[orderId] = Order(
+            orderId,
+            msg.sender,
+            address(0),
+            address(0),
+            msg.value,
+            Status.PLACED
+        );
+        emit OrderPlaced(orderId, msg.sender, msg.value);
+    }
+
+    /**
+     * @dev Prepare order
+     * @param _id order id
+     */
+    function prepareOrder(uint256 _id) public onlyEmployee {
+        require(orders[_id].id != 0, "Order does not exist with this id");
+        require(
+            orders[_id].status == Status.PLACED,
+            "Order must be in PLACED status"
+        );
+        updateOrderStatus(_id, Status.PREPARING);
+        updateOrderCook(_id, msg.sender);
+        emit OrderPreparing(_id, msg.sender);
+    }
+
+    /**
+     * @dev Set order ready to delivery
+     * @param _id order id
+     */
+    function readyOrder(uint256 _id) public onlyEmployee {
+        require(orders[_id].id != 0, "Order does not exist with this id");
+        require(
+            orders[_id].status == Status.PREPARING,
+            "Order must be in PREPARING status"
+        );
+        updateOrderStatus(_id, Status.READY);
+        emit OrderReady(_id, msg.sender);
+    }
+
+    /**
+     * @dev Deliver order
+     * @param _id order id
+     */
+    function deliverOrder(uint256 _id) public onlyEmployee {
+        require(orders[_id].id != 0, "Order does not exist with this id");
+        require(
+            orders[_id].status == Status.READY,
+            "Order must be in READY status"
+        );
+        updateOrderStatus(_id, Status.DELIVERING);
+        updateOrderdeliveryMan(_id, msg.sender);
+        emit OrderInDelivery(_id, msg.sender);
+    }
+
+    /**
+     * @dev Complete order
+     * @param _id order id
+     */
+    function completeOrder(uint256 _id) public onlyEmployee {
+        require(orders[_id].id != 0, "Order does not exist with this id");
+        require(
+            orders[_id].status == Status.DELIVERING,
+            "Order must be in DELIVERING status"
+        );
+        updateOrderStatus(_id, Status.COMPLETED);
+        transferMoney(companyWallet, orders[_id].price);
+        emit OrderCompleted(_id, msg.sender, orders[_id].customer);
+    }
+
+    /**
      * @dev Update order
      * @param _id order id
      * @param _status order status
      */
     function updateOrderStatus(uint256 _id, Status _status) private {
-        require(orders[_id].id != 0, "Order does not exist with this id");
         orders[_id].status = _status;
     }
 
@@ -141,65 +223,10 @@ contract SupplyChain {
     /**
      * @dev Update order
      * @param _id order id
-     * @param _deliveryGuy delivery guy address
+     * @param _deliveryMan delivery guy address
      */
-    function updateOrderDeliveryGuy(uint256 _id, address _deliveryGuy) private {
-        orders[_id].deliveryGuy = _deliveryGuy;
-    }
-
-    /**
-     * @dev Prepare order
-     * @param _id order id
-     */
-    function prepareOrder(uint256 _id) public onlyEmployee {
-        require(
-            orders[_id].status == Status.ORDERED,
-            "Order must be in ORDERED status"
-        );
-        updateOrderStatus(_id, Status.PREPARING);
-        updateOrderCook(_id, msg.sender);
-        emit OrderPreparing(_id, msg.sender);
-    }
-
-    /**
-     * @dev Set order ready to delivery
-     * @param _id order id
-     */
-    function readyOrder(uint256 _id) public onlyEmployee {
-        require(
-            orders[_id].status == Status.PREPARING,
-            "Order must be in PREPARING status"
-        );
-        updateOrderStatus(_id, Status.READY);
-        emit OrderReady(_id, msg.sender);
-    }
-
-    /**
-     * @dev Deliver order
-     * @param _id order id
-     */
-    function deliverOrder(uint256 _id) public onlyEmployee {
-        require(
-            orders[_id].status == Status.READY,
-            "Order must be in READY status"
-        );
-        updateOrderStatus(_id, Status.DELIVERING);
-        updateOrderDeliveryGuy(_id, msg.sender);
-        emit OrderInDelivery(_id, msg.sender);
-    }
-
-    /**
-     * @dev Complete order
-     * @param _id order id
-     */
-    function completeOrder(uint256 _id) public onlyEmployee {
-        require(
-            orders[_id].status == Status.DELIVERING,
-            "Order must be in DELIVERING status"
-        );
-        updateOrderStatus(_id, Status.COMPLETED);
-        transferMoney(companyWallet, orders[_id].price);
-        emit OrderCompleted(_id, msg.sender, orders[_id].customer);
+    function updateOrderdeliveryMan(uint256 _id, address _deliveryMan) private {
+        orders[_id].deliveryMan = _deliveryMan;
     }
 
     /**
@@ -207,25 +234,6 @@ contract SupplyChain {
      */
     function transferMoney(address payable _to, uint256 _amount) private {
         _to.transfer(_amount);
-    }
-
-    /**
-     * @dev Place an order
-     */
-    function placeOrder() public payable {
-        require(msg.value > 0, "Price must be greater than 0");
-        ordersCount++;
-        uint orderId = ordersCount;
-        require(orders[orderId].id == 0, "Order already exists");
-        orders[orderId] = Order(
-            orderId,
-            msg.sender,
-            address(0),
-            address(0),
-            msg.value,
-            Status.ORDERED
-        );
-        emit OrderPlaced(orderId, msg.sender, msg.value);
     }
 
     /**
@@ -270,16 +278,16 @@ contract SupplyChain {
         string memory m_role
     ) private pure returns (Role) {
         bytes32 encodedRole = keccak256(abi.encodePacked(m_role));
-        bytes32 encodedRole0 = keccak256(abi.encodePacked("COOK"));
+        bytes32 encodedRole0 = keccak256(abi.encodePacked("CUSTOMER"));
         bytes32 encodedRole1 = keccak256(abi.encodePacked("DELIVERY_MAN"));
-        bytes32 encodedRole2 = keccak256(abi.encodePacked("CUSTOMER"));
+        bytes32 encodedRole2 = keccak256(abi.encodePacked("COOK"));
 
         if (encodedRole == encodedRole0) {
-            return Role.COOK;
+            return Role.CUSTOMER;
         } else if (encodedRole == encodedRole1) {
             return Role.DELIVERY_MAN;
         } else if (encodedRole == encodedRole2) {
-            return Role.CUSTOMER;
+            return Role.COOK;
         }
 
         revert("Employee role is not valid");
@@ -289,21 +297,24 @@ contract SupplyChain {
         string memory m_status
     ) private pure returns (Status) {
         bytes32 endcodedStatus = keccak256(abi.encodePacked(m_status));
-        bytes32 endcodedStatus0 = keccak256(abi.encodePacked("ORDERED"));
-        bytes32 endcodedStatus1 = keccak256(abi.encodePacked("PREPARING"));
-        bytes32 endcodedStatus2 = keccak256(abi.encodePacked("READY"));
-        bytes32 endcodedStatus3 = keccak256(abi.encodePacked("DELIVERING"));
-        bytes32 endcodedStatus4 = keccak256(abi.encodePacked("COMPLETED"));
+        bytes32 endcodedStatus0 = keccak256(abi.encodePacked("NOT_EXISTS"));
+        bytes32 endcodedStatus1 = keccak256(abi.encodePacked("PLACED"));
+        bytes32 endcodedStatus2 = keccak256(abi.encodePacked("PREPARING"));
+        bytes32 endcodedStatus3 = keccak256(abi.encodePacked("READY"));
+        bytes32 endcodedStatus4 = keccak256(abi.encodePacked("DELIVERING"));
+        bytes32 endcodedStatus5 = keccak256(abi.encodePacked("COMPLETED"));
 
         if (endcodedStatus == endcodedStatus0) {
-            return Status.ORDERED;
+            return Status.NOT_EXISTS;
         } else if (endcodedStatus == endcodedStatus1) {
-            return Status.PREPARING;
+            return Status.PLACED;
         } else if (endcodedStatus == endcodedStatus2) {
-            return Status.READY;
+            return Status.PREPARING;
         } else if (endcodedStatus == endcodedStatus3) {
-            return Status.DELIVERING;
+            return Status.READY;
         } else if (endcodedStatus == endcodedStatus4) {
+            return Status.DELIVERING;
+        } else if (endcodedStatus == endcodedStatus5) {
             return Status.COMPLETED;
         }
 
