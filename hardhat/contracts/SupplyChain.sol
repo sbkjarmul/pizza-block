@@ -191,8 +191,12 @@ contract SupplyChain {
      * @dev Complete order
      * @param _id order id
      */
-    function completeOrder(uint256 _id) public onlyEmployee {
+    function completeOrder(uint256 _id) public {
         require(orders[_id].id != 0, "Order does not exist with this id");
+        require(
+            orders[_id].customer == msg.sender,
+            "Only customers can call this function"
+        );
         require(
             orders[_id].status == Status.DELIVERING,
             "Order must be in DELIVERING status"

@@ -22,6 +22,7 @@ enum Status {
 enum RevertMessage {
 	ONLY_OWNER = "Only owner can call this function",
 	ONLY_EMPLOYEE = "Only employees can call this function",
+	ONLY_CUSTOMER = "Only customers can call this function",
 	EMPLOYEE_ZERO_ADDRESS = "Employee address cannot be zero address",
 	COMPANY_WALLET_ZERO_ADDRESS = "Company wallet address cannot be zero address",
 	PRICE_GREATER_THAN_ZERO = "Price must be greater than 0",
@@ -302,6 +303,54 @@ describe("SupplyChain", function () {
 			await expect(
 				supplyChainInstance.connect(deliveryMan).deliverOrder(1)
 			).to.be.revertedWith(RevertMessage.ORDER_MUST_BE_READY);
+		});
+	});
+
+	describe("completeOrder", function () {
+		it("Should complete order successfully", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer, cook, deliveryMan] = await ethers.getSigners();
+			await supplyChainInstance.addEmployee(cook.address, Role.COOK);
+			await supplyChainInstance.addEmployee(deliveryMan.address, Role.DELIVERY_MAN);
+			await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			await supplyChainInstance.connect(cook).prepareOrder(1);
+			await supplyChainInstance.connect(cook).readyOrder(1);
+			await supplyChainInstance.connect(deliveryMan).deliverOrder(1);
+			const result = await supplyChainInstance.connect(customer).completeOrder(1);
+			await expect(result).to.emit(supplyChainInstance, "OrderCompleted");
+			const order = await supplyChainInstance.orders(1);
+			expect(order.status).to.equal(Status.COMPLETED);
+		});
+
+		it("Should revert if not customer tries to complete order", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer, cook, deliveryMan] = await ethers.getSigners();
+						await supplyChainInstance.addEmployee(cook.address, Role.COOK);
+			await supplyChainInstance.addEmployee(deliveryMan.address, Role.DELIVERY_MAN);
+			await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			await supplyChainInstance.connect(cook).prepareOrder(1);
+			await supplyChainInstance.connect(cook).readyOrder(1);
+			await supplyChainInstance.connect(deliveryMan).deliverOrder(1);
+			await expect(
+				supplyChainInstance.connect(deliveryMan).completeOrder(1)
+			).to.be.revertedWith(RevertMessage.ONLY_CUSTOMER);
+		});
+
+		it("Should revert if order does not exist", async function () {
+			const [_, cook] = await ethers.getSigners();
+			await supplyChainInstance.addEmployee(cook.address, Role.COOK);
+			await expect(supplyChainInstance.connect(cook).completeOrder(1)).to.be.revertedWith(
+				RevertMessage.ORDER_NOT_EXISTS
+			);
+		});
+
+		it("Should revert if order is not in DELIVERING status", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer] = await ethers.getSigners();
+			await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			await expect(
+				supplyChainInstance.connect(customer).completeOrder(1)
+			).to.be.revertedWith(RevertMessage.ORDER_MUST_BE_DELIVERING);
 		});
 	});
 });
