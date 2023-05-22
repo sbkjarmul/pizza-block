@@ -19,7 +19,8 @@ contract SupplyChain {
         PREPARING,
         READY,
         DELIVERING,
-        COMPLETED
+        COMPLETED,
+        CANCELLED
     }
 
     struct Order {
@@ -44,6 +45,7 @@ contract SupplyChain {
     event OrderReady(uint256 id, address cook);
     event OrderInDelivery(uint256 id, address deliveryMan);
     event OrderCompleted(uint256 id, address deliveryMan, address customer);
+    event OrderCancelled(uint256 id, address customer);
 
     uint private ordersCount = 0;
     address private owner;
@@ -62,10 +64,6 @@ contract SupplyChain {
      * @dev Modifier to check if the caller is an employee
      */
     modifier onlyEmployee() {
-        // require(
-        //     msg.sender == cook || msg.sender == deliveryMan,
-        //     "Only employees can call this function"
-        // );
         require(
             employees[msg.sender].role == Role.COOK ||
                 employees[msg.sender].role == Role.DELIVERY_MAN,
@@ -204,6 +202,27 @@ contract SupplyChain {
         updateOrderStatus(_id, Status.COMPLETED);
         transferMoney(companyWallet, orders[_id].price);
         emit OrderCompleted(_id, msg.sender, orders[_id].customer);
+    }
+
+    /**
+     * @dev Cancel order
+     * @param _id order id
+     * @notice This function is used to cancel an order only if it is in placed status
+     */
+    function cancelOrder(uint256 _id) public {
+        require(orders[_id].id != 0, "Order does not exist with this id");
+        require(
+            orders[_id].customer == msg.sender,
+            "Only customers can call this function"
+        );
+        require(
+            orders[_id].status == Status.PLACED,
+            "Order must be in PLACED status"
+        );
+        updateOrderStatus(_id, Status.CANCELLED);
+        transferMoney(payable(orders[_id].customer), orders[_id].price);
+        delete orders[_id];
+        emit OrderCancelled(_id, orders[_id].customer);
     }
 
     /**

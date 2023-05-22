@@ -352,5 +352,130 @@ describe("SupplyChain", function () {
 				supplyChainInstance.connect(customer).completeOrder(1)
 			).to.be.revertedWith(RevertMessage.ORDER_MUST_BE_DELIVERING);
 		});
+
+		it("Should transfer order price to company wallet", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer, cook, deliveryMan] = await ethers.getSigners();
+
+			const companyWalletAddress = await supplyChainInstance.getCompanyWalletAddress();
+			
+			await supplyChainInstance.addEmployee(cook.address, Role.COOK);
+			await supplyChainInstance.addEmployee(deliveryMan.address, Role.DELIVERY_MAN);
+			await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			await supplyChainInstance.connect(cook).prepareOrder(1);
+			await supplyChainInstance.connect(cook).readyOrder(1);
+			await supplyChainInstance.connect(deliveryMan).deliverOrder(1);
+			const companyWalletBalanceBefore = await ethers.provider.getBalance(companyWalletAddress);
+			await supplyChainInstance.connect(customer).completeOrder(1);
+			const companyWalletBalanceAfter = await ethers.provider.getBalance(companyWalletAddress);
+
+			expect(companyWalletBalanceAfter).to.equal(companyWalletBalanceBefore.add(orderPrice));
+		});
+
+	});
+
+	describe("cancelOrder", function () {
+		it("Should cancel order successfully", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer] = await ethers.getSigners();
+			await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			const result = await supplyChainInstance.connect(customer).cancelOrder(1);
+			await expect(result).to.emit(supplyChainInstance, "OrderCancelled");
+			const order = await supplyChainInstance.orders(1);
+			expect(order.status).to.equal(Status.NOT_EXISTS);
+		});
+
+		it("Should revert if not customer tries to cancel order", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer, cook] = await ethers.getSigners();
+			await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			await expect(
+				supplyChainInstance.connect(cook).completeOrder(1)
+			).to.be.revertedWith(RevertMessage.ONLY_CUSTOMER);
+		});
+
+		it("Should revert if order does not exist", async function () {
+			const [_, cook] = await ethers.getSigners();
+			await supplyChainInstance.addEmployee(cook.address, Role.COOK);
+			await expect(supplyChainInstance.connect(cook).cancelOrder(1)).to.be.revertedWith(
+				RevertMessage.ORDER_NOT_EXISTS
+			);
+		});
+
+		it("Should revert if order is not in PLACED status", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer, cook] = await ethers.getSigners();
+			await supplyChainInstance.addEmployee(cook.address, Role.COOK);
+			await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			await supplyChainInstance.connect(cook).prepareOrder(1);
+			await expect(
+				supplyChainInstance.connect(customer).cancelOrder(1)
+			).to.be.revertedWith(RevertMessage.ORDER_MUST_BE_PLACED);
+		});
+
+		it("Should refund customer if order is in PLACED status", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer] = await ethers.getSigners();
+
+			const customerBalanceBefore = await ethers.provider.getBalance(customer.address);
+			const placeOrderTransaction = await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			
+			const placeOrderGasPrice = placeOrderTransaction.gasPrice || ethers.BigNumber.from(0);
+			const gasUsedForPlaceOrder = ethers.BigNumber.from((await placeOrderTransaction.wait()).gasUsed);
+			const cancelOrderTransaction = await supplyChainInstance.connect(customer).cancelOrder(1);
+			const cancelOrderGasPrice = cancelOrderTransaction.gasPrice || ethers.BigNumber.from(0);
+
+			const gasUsedForCancelOrder = ethers.BigNumber.from((await cancelOrderTransaction.wait()).gasUsed);
+			const customerBalanceAfter = await ethers.provider.getBalance(customer.address);
+			const transactionGasCosts = gasUsedForPlaceOrder.mul(placeOrderGasPrice).add(gasUsedForCancelOrder.mul(cancelOrderGasPrice));
+			
+			expect(customerBalanceAfter).to.equal(customerBalanceBefore.sub(transactionGasCosts));
+		});
+	});
+
+	describe("Getters", function () {
+		it("Should get owner address", async function () {
+			const [owner] = await ethers.getSigners();
+			expect(await supplyChainInstance.getOwner()).to.equal(owner.address);
+		});
+
+		it("Should get company wallet address", async function () {
+			const [owner] = await ethers.getSigners();
+			expect(await supplyChainInstance.getCompanyWalletAddress()).to.equal(
+				owner.address
+			);
+		});
+
+		it("Should revert if not owner tries to get company wallet address", async function () {
+			const [_, randomAddress] = await ethers.getSigners();
+			await expect(
+				supplyChainInstance
+				.connect(randomAddress)
+				.getCompanyWalletAddress()
+			).to.be.revertedWith(RevertMessage.ONLY_OWNER);
+		});
+
+		it("Should get order status", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer] = await ethers.getSigners();
+			await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			expect(await supplyChainInstance.getOrderStatus(1)).to.equal(Status.PLACED);
+		});
+
+		it("Should get order price", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer] = await ethers.getSigners();
+			await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			expect(await supplyChainInstance.getOrderPrice(1)).to.equal(orderPrice);
+		});
+
+		it("Should get order cook address", async function () {
+			const orderPrice = ethers.utils.parseEther("1");
+			const [_, customer, cook] = await ethers.getSigners();
+			await supplyChainInstance.addEmployee(cook.address, Role.COOK);
+			await supplyChainInstance.connect(customer).placeOrder({ value: orderPrice });
+			await supplyChainInstance.connect(cook).prepareOrder(1);
+			expect(await supplyChainInstance.getOrderCook(1)).to.equal(cook.address);
+		});
 	});
 });
