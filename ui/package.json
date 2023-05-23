@@ -27,7 +27,7 @@
   },
   "husky": {
     "hooks": {
-      "pre-commit": "npm run format && npm run lint"
+      "commit": "npm run format && npm run lint"
     }
   },
   "eslintConfig": {
