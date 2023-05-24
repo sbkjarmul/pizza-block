@@ -12,7 +12,7 @@
     "es6": true
   },
   "rules": {
-    "no-console": 2,
+    "no-console": 1,
     "prettier/prettier": 1
   }
 }
